@@ -7,6 +7,9 @@ const { authenticateToken, isShop } = require('../middleware');
 // สำหรับ shop dashboard - ดึงรายการรถของร้านที่กำลังล็อกอิน
 router.get('/shop/dashboard', authenticateToken, isShop, carController.getShopCars);
 
+// ดึงรถยนต์แนะนำ (featured cars)
+router.get('/featured', carController.getFeaturedCars);
+
 // สร้างรถใหม่
 router.post('/', authenticateToken, isShop, carController.addCar);
 

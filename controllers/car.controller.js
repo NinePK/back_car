@@ -563,6 +563,58 @@ const getShopCarsByShopId = async (req, res) => {
   }
 };
 
+// ดึงรถยนต์แนะนำ (featured cars)
+const getFeaturedCars = async (req, res) => {
+  try {
+    // ตรวจสอบว่ามีคอลัมน์ promptpay_id ในตาราง users หรือไม่
+    const [columns] = await db.executeQuery("SHOW COLUMNS FROM users LIKE 'promptpay_id'");
+    
+    let query;
+    if (columns.length > 0) {
+      // ดึงข้อมูลรถยนต์แนะนำพร้อม promptpay_id
+      query = `SELECT c.*, u.shop_name, u.promptpay_id
+              FROM cars c 
+              JOIN users u ON c.shop_id = u.id 
+              WHERE c.status = 'available' AND c.status != 'hidden'
+              ORDER BY c.created_at DESC, c.daily_rate ASC
+              LIMIT 6`;
+    } else {
+      // ดึงข้อมูลรถยนต์แนะนำโดยไม่มี promptpay_id
+      query = `SELECT c.*, u.shop_name
+              FROM cars c 
+              JOIN users u ON c.shop_id = u.id 
+              WHERE c.status = 'available' AND c.status != 'hidden'
+              ORDER BY c.created_at DESC, c.daily_rate ASC
+              LIMIT 6`;
+    }
+    
+    const cars = await db.executeQuery(query);
+    
+    // ดึงรูปภาพของรถยนต์แต่ละคัน
+    for (const car of cars) {
+      const images = await db.executeQuery(
+        'SELECT * FROM car_images WHERE car_id = ?',
+        [car.id]
+      );
+      car.images = images;
+      
+      // ถ้าไม่มี image_url แต่มีรูปภาพ ให้ใช้รูปแรกที่เป็น primary
+      if (!car.image_url && images.length > 0) {
+        const primaryImage = images.find(img => img.is_primary) || images[0];
+        car.image_url = primaryImage.image_url;
+      }
+    }
+    
+    res.status(200).json({
+      cars
+    });
+    
+  } catch (err) {
+    console.error('Get featured cars error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // แก้ไข module.exports เพื่อเพิ่มฟังก์ชันใหม่
 module.exports = {
   addCar,
@@ -573,5 +625,6 @@ module.exports = {
   updateCarStatus,
   deleteCar,
   searchCars,
-  getCarForCustomer
+  getCarForCustomer,
+  getFeaturedCars
 };

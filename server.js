@@ -14,6 +14,7 @@ const rentalRoutes = require('./routes/rental.routes');
 const imageRoutes = require('./routes/image.routes'); // เพิ่ม route สำหรับรูปภาพ
 const paymentRoutes = require('./routes/payment.routes');
 const reviewRoutes = require('./routes/review.routes'); // เพิ่ม route สำหรับรีวิว
+const customerRoutes = require('./routes/customer.routes'); // เพิ่ม route สำหรับลูกค้า
 
 const { authenticateToken, isShop } = require('./middleware');
 const app = express();
@@ -54,6 +55,7 @@ app.use('/api', rentalRoutes);
 app.use('/api', imageRoutes); // เพิ่ม route สำหรับรูปภาพ
 app.use('/api', paymentRoutes);
 app.use('/api', reviewRoutes); // เพิ่ม route สำหรับรีวิว
+app.use('/api/customer', customerRoutes); // เพิ่ม route สำหรับลูกค้า
 
 
 app.get('/api/shops/dashboard/cars', authenticateToken, isShop, (req, res) => {
