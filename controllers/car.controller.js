@@ -62,7 +62,7 @@ const getShopCars = async (req, res) => {
     
     // ดึงข้อมูลรถยนต์ทั้งหมดของร้าน
     const cars = await db.executeQuery(
-      'SELECT * FROM cars WHERE shop_id = ? ORDER BY created_at DESC',
+      'SELECT * FROM cars WHERE shop_id = ? AND status != "deleted" ORDER BY created_at DESC',
       [shopId]
     );
     
@@ -104,12 +104,12 @@ const getCarById = async (req, res) => {
       // ดึงข้อมูลรถยนต์พร้อม promptpay_id
       query = 'SELECT c.*, u.shop_name, u.promptpay_id FROM cars c ' +
               'JOIN users u ON c.shop_id = u.id ' +
-              'WHERE c.id = ?';
+              'WHERE c.id = ? AND c.status != "deleted"';
     } else {
       // ดึงข้อมูลรถยนต์โดยไม่มี promptpay_id
       query = 'SELECT c.*, u.shop_name FROM cars c ' +
               'JOIN users u ON c.shop_id = u.id ' +
-              'WHERE c.id = ?';
+              'WHERE c.id = ? AND c.status != "deleted"';
     }
     
     const [car] = await db.executeQuery(query, [carId]);
@@ -306,29 +306,44 @@ const deleteCar = async (req, res) => {
       return res.status(404).json({ message: 'รถไม่พบในระบบหรือคุณไม่ได้เป็นเจ้าของรถยนต์นี้' });
     }
     
-    // ก่อนลบ ให้ตรวจสอบว่ามีการเช่าที่เกี่ยวข้องหรือไม่
-    const [rentals] = await db.executeQuery(
-      'SELECT COUNT(*) as count FROM rentals WHERE car_id = ?',
+    // ก่อนลบ ให้ตรวจสอบว่ามีการเช่าที่กำลังดำเนินการอยู่หรือไม่
+    console.log(`Checking active rentals for car ${carId}`);
+    const [activeRentals] = await db.executeQuery(
+      'SELECT COUNT(*) as count FROM rentals WHERE car_id = ? AND rental_status IN (?, ?)',
+      [carId, 'confirmed', 'ongoing']
+    );
+    console.log(`Active rentals count: ${activeRentals?.count || 0}`);
+    
+    // ตรวจสอบ rentals ทั้งหมดของรถคันนี้
+    const allRentals = await db.executeQuery(
+      'SELECT id, rental_status FROM rentals WHERE car_id = ?',
       [carId]
     );
+    console.log(`All rentals for car ${carId}:`, allRentals);
     
-    if (rentals?.count > 0) {
-      // มีการเช่าที่เกี่ยวข้อง ไม่สามารถลบได้โดยตรง
+    if (activeRentals?.count > 0) {
+      // มีการเช่าที่กำลังดำเนินการอยู่ ไม่สามารถลบได้
+      console.log(`Cannot delete car ${carId} - has active rentals`);
       return res.status(409).json({ 
-        message: 'ไม่สามารถลบรถยนต์นี้ได้เนื่องจากมีประวัติการเช่า คุณสามารถเปลี่ยนสถานะเป็นไม่พร้อมให้บริการแทน',
-        suggestion: 'โปรดเปลี่ยนสถานะรถเป็น "ไม่พร้อมให้บริการ" แทนการลบ'
+        message: 'ไม่สามารถลบรถยนต์นี้ได้ เนื่องจากมีการเช่าที่เกี่ยวข้อง',
+        suggestion: 'กรุณารอให้การเช่าสิ้นสุดก่อนหรือเปลี่ยนสถานะรถเป็น "ซ่อมบำรุง" แทน'
       });
     }
     
-    // ถ้าไม่มีการเช่าที่เกี่ยวข้อง สามารถลบได้
-    const result = await db.remove('cars', carId);
+    // ใช้ soft delete แทนการลบจริง - เปลี่ยนสถานะเป็น 'deleted'
+    console.log(`Proceeding to soft delete car ${carId}`);
+    const result = await db.executeQuery(
+      'UPDATE cars SET status = ?, updated_at = NOW() WHERE id = ?',
+      ['deleted', carId]
+    );
+    console.log(`Update result:`, result);
     
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'ไม่พบรถยนต์' });
     }
     
     res.status(200).json({
-      message: 'ลบรถยนต์สำเร็จ'
+      message: 'ลบรถยนต์สำเร็จ (ซ่อนจากการแสดงผล)'
     });
     
   } catch (err) {
@@ -357,10 +372,10 @@ const searchCars = async (req, res) => {
     let query;
     if (columns.length > 0) {
       // ดึงข้อมูลรถยนต์พร้อม promptpay_id (แสดงทุกสถานะยกเว้น hidden)
-      query = 'SELECT c.*, u.shop_name, u.promptpay_id FROM cars c JOIN users u ON c.shop_id = u.id WHERE c.status != "hidden"';
+      query = 'SELECT c.*, u.shop_name, u.promptpay_id FROM cars c JOIN users u ON c.shop_id = u.id WHERE c.status != "hidden" AND c.status != "deleted"';
     } else {
       // ดึงข้อมูลรถยนต์โดยไม่มี promptpay_id (แสดงทุกสถานะยกเว้น hidden)
-      query = 'SELECT c.*, u.shop_name FROM cars c JOIN users u ON c.shop_id = u.id WHERE c.status != "hidden"';
+      query = 'SELECT c.*, u.shop_name FROM cars c JOIN users u ON c.shop_id = u.id WHERE c.status != "hidden" AND c.status != "deleted"';
     }
     
     // กรองตามเงื่อนไขต่าง ๆ

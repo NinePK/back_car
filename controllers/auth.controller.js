@@ -135,10 +135,21 @@ const getProfile = async (req, res) => {
               'FROM users WHERE id = ?';
     }
     
-    const [user] = await db.executeQuery(query, [userId]);
+    const users = await db.executeQuery(query, [userId]);
+    const user = users[0];
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Fix: Ensure promptpay_id is included for all users
+    if (!user.promptpay_id) {
+      // Query directly to get promptpay_id if missing
+      const directQuery = 'SELECT promptpay_id FROM users WHERE id = ?';
+      const directResult = await db.executeQuery(directQuery, [userId]);
+      if (directResult.length > 0 && directResult[0].promptpay_id) {
+        user.promptpay_id = directResult[0].promptpay_id;
+      }
     }
     
     res.status(200).json({
@@ -161,12 +172,14 @@ const updateProfile = async (req, res) => {
     
     // เตรียมข้อมูลที่อนุญาตให้อัปเดต
     let allowedFields = ['phone', 'address', 'profile_image'];
+    
+    // เพิ่ม promptpay_id สำหรับทั้ง shop และ customer เมื่อมีคอลัมน์นี้อยู่
+    if (columns.length > 0) {
+      allowedFields.push('promptpay_id');
+    }
+    
     if (userRole === 'shop') {
       allowedFields.push('shop_name', 'shop_description');
-      // เพิ่ม promptpay_id เฉพาะเมื่อมีคอลัมน์นี้อยู่
-      if (columns.length > 0) {
-        allowedFields.push('promptpay_id');
-      }
     }
     
     // กรองเฉพาะฟิลด์ที่อนุญาตและมีค่า
@@ -204,7 +217,17 @@ const updateProfile = async (req, res) => {
     }
     
     // ดึงข้อมูลผู้ใช้ล่าสุดหลังจากอัปเดต
-    const [updatedUser] = await db.executeQuery(query, [userId]);
+    const updatedUsers = await db.executeQuery(query, [userId]);
+    const updatedUser = updatedUsers[0];
+    
+    // Fix: Ensure promptpay_id is included for all users in update response
+    if (updatedUser && !updatedUser.promptpay_id) {
+      const directQuery = 'SELECT promptpay_id FROM users WHERE id = ?';
+      const directResult = await db.executeQuery(directQuery, [userId]);
+      if (directResult.length > 0 && directResult[0].promptpay_id) {
+        updatedUser.promptpay_id = directResult[0].promptpay_id;
+      }
+    }
     
     res.status(200).json({
       message: 'Profile updated successfully',

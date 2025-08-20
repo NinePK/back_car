@@ -17,18 +17,19 @@ const createReview = async (req, res) => {
       return res.status(400).json({ message: 'คะแนนต้องอยู่ระหว่าง 1-5 ดาว' });
     }
     
-    // ตรวจสอบว่าการเช่านี้มีอยู่จริงและสำเร็จแล้ว
+    // ตรวจสอบว่าการเช่านี้มีอยู่จริงและสำเร็จแล้วหรือได้รับการอนุมัติคืนรถแล้ว
     const [rental] = await db.executeQuery(
-      `SELECT r.*, c.shop_id, c.id as car_id 
+      `SELECT r.*, c.shop_id, c.id as car_id
        FROM rentals r 
        JOIN cars c ON r.car_id = c.id 
-       WHERE r.id = ? AND r.customer_id = ? AND r.rental_status = 'completed'`,
+       WHERE r.id = ? AND r.customer_id = ? 
+       AND r.rental_status IN ('completed', 'return_approved')`,
       [rental_id, customer_id]
     );
     
     if (!rental) {
       return res.status(404).json({ 
-        message: 'ไม่พบการเช่านี้หรือการเช่ายังไม่เสร็จสิ้น' 
+        message: 'ไม่พบการเช่านี้หรือการเช่ายังไม่เสร็จสิ้น/อนุมัติคืนรถ' 
       });
     }
     
@@ -223,9 +224,9 @@ const getReviewableRentals = async (req, res) => {
   try {
     const customer_id = req.user.id;
     
-    // ดึงการเช่าที่เสร็จสิ้นแล้วและยังไม่ได้รีวิว
+    // ดึงการเช่าที่เสร็จสิ้นแล้วหรือได้รับการอนุมัติคืนรถแล้ว และยังไม่ได้รีวิว
     const rentals = await db.executeQuery(
-      `SELECT r.id as rental_id, r.start_date, r.end_date,
+      `SELECT r.id as rental_id, r.start_date, r.end_date, r.rental_status,
               CONCAT(c.brand, ' ', c.model) as car_name,
               c.id as car_id,
               u.shop_name,
@@ -235,7 +236,7 @@ const getReviewableRentals = async (req, res) => {
        JOIN users u ON r.shop_id = u.id
        LEFT JOIN reviews rev ON r.id = rev.rental_id
        WHERE r.customer_id = ? 
-       AND r.rental_status = 'completed'
+       AND r.rental_status IN ('completed', 'return_approved')
        AND rev.id IS NULL
        ORDER BY r.end_date DESC`,
       [customer_id]

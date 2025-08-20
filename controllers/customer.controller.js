@@ -4,18 +4,31 @@ const db = require('../models/db');
 // ดึงข้อมูลโปรไฟล์ลูกค้า
 const getProfile = async (req, res) => {
   try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+    
     const userId = req.user.id;
     
-    const [users] = await db.executeQuery(
-      'SELECT id, username, email, phone, address, profile_image, created_at, role FROM users WHERE id = ?',
+    const users = await db.executeQuery(
+      'SELECT id, username, email, phone, address, profile_image, promptpay_id, created_at, role FROM users WHERE id = ?',
       [userId]
     );
     
-    if (users.length === 0) {
+    if (!users || users.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
     
     const user = users[0];
+    
+    // Fix: Ensure promptpay_id is included for all users
+    if (!user.promptpay_id) {
+      const directQuery = 'SELECT promptpay_id FROM users WHERE id = ?';
+      const directResult = await db.executeQuery(directQuery, [userId]);
+      if (directResult.length > 0 && directResult[0].promptpay_id) {
+        user.promptpay_id = directResult[0].promptpay_id;
+      }
+    }
     
     res.status(200).json({
       profile: {
@@ -24,6 +37,7 @@ const getProfile = async (req, res) => {
         email: user.email,
         phone: user.phone,
         address: user.address,
+        promptpay_id: user.promptpay_id,
         profile_image: user.profile_image,
         created_at: user.created_at,
         role: user.role
@@ -39,12 +53,16 @@ const getProfile = async (req, res) => {
 // อัปเดตข้อมูลโปรไฟล์ลูกค้า
 const updateProfile = async (req, res) => {
   try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+    
     const userId = req.user.id;
-    const { phone, address } = req.body;
+    const { phone, address, promptpay_id } = req.body;
     
     // ตรวจสอบว่าข้อมูลที่ส่งมาถูกต้อง
-    if (!phone && !address) {
-      return res.status(400).json({ message: 'Please provide phone or address to update' });
+    if (!phone && !address && !promptpay_id) {
+      return res.status(400).json({ message: 'Please provide phone, address, or promptpay_id to update' });
     }
     
     // สร้าง query สำหรับอัปเดต
@@ -59,6 +77,11 @@ const updateProfile = async (req, res) => {
     if (address !== undefined) {
       updateFields.push('address = ?');
       updateValues.push(address);
+    }
+    
+    if (promptpay_id !== undefined) {
+      updateFields.push('promptpay_id = ?');
+      updateValues.push(promptpay_id);
     }
     
     updateValues.push(userId);
@@ -78,38 +101,42 @@ const updateProfile = async (req, res) => {
 // ดึงสถิติการใช้งานลูกค้า
 const getStats = async (req, res) => {
   try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+    
     const userId = req.user.id;
     
     // นับจำนวนการจองทั้งหมด
-    const [totalBookings] = await db.executeQuery(
+    const totalBookings = await db.executeQuery(
       'SELECT COUNT(*) as total FROM rentals WHERE customer_id = ?',
       [userId]
     );
     
     // นับจำนวนการจองที่กำลังใช้งาน
-    const [activeBookings] = await db.executeQuery(
+    const activeBookings = await db.executeQuery(
       'SELECT COUNT(*) as active FROM rentals WHERE customer_id = ? AND rental_status IN (?, ?, ?)',
       [userId, 'confirmed', 'ongoing', 'return_requested']
     );
     
     // นับจำนวนการจองที่เสร็จสิ้น
-    const [completedBookings] = await db.executeQuery(
+    const completedBookings = await db.executeQuery(
       'SELECT COUNT(*) as completed FROM rentals WHERE customer_id = ? AND rental_status IN (?, ?, ?)',
       [userId, 'completed', 'cancelled', 'return_approved']
     );
     
     // คำนวณยอดใช้จ่ายรวม
-    const [totalSpent] = await db.executeQuery(
+    const totalSpent = await db.executeQuery(
       'SELECT COALESCE(SUM(total_amount), 0) as total_spent FROM rentals WHERE customer_id = ? AND payment_status = ?',
       [userId, 'paid']
     );
     
     res.status(200).json({
       stats: {
-        total_bookings: totalBookings[0].total,
-        active_bookings: activeBookings[0].active,
-        completed_bookings: completedBookings[0].completed,
-        total_spent: parseFloat(totalSpent[0].total_spent)
+        total_bookings: totalBookings[0]?.total || 0,
+        active_bookings: activeBookings[0]?.active || 0,
+        completed_bookings: completedBookings[0]?.completed || 0,
+        total_spent: parseFloat(totalSpent[0]?.total_spent || 0)
       }
     });
     

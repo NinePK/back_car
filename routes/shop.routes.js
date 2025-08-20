@@ -15,6 +15,12 @@ router.get('/search', shopController.searchShops);
 // อัปโหลดรูปโปรไฟล์ร้าน
 router.post('/upload-profile-image', authenticateToken, isShop, upload.single('profile_image'), shopController.uploadProfileImage);
 
+// ดึงข้อมูลโปรไฟล์ร้านค้า
+router.get('/profile', authenticateToken, isShop, shopController.getProfile);
+
+// อัพเดทข้อมูลโปรไฟล์ร้านค้า  
+router.put('/profile', authenticateToken, isShop, shopController.updateProfile);
+
 // ดึงรายการรถยนต์ของร้านเช่ารถที่กำลังล็อกอิน (สำหรับหน้า dashboard)
 router.get('/dashboard/cars', authenticateToken, isShop, carController.getShopCars);
 

@@ -130,10 +130,12 @@ const getCustomerRentals = async (req, res) => {
     const customerId = req.user.id;
     
     const rentals = await db.executeQuery(
-      `SELECT r.*, c.brand, c.model, c.year, c.image_url, u.shop_name, u.username as shop_username
+      `SELECT r.*, c.brand, c.model, c.year, c.image_url, u.shop_name, u.username as shop_username,
+              CASE WHEN rv.id IS NOT NULL THEN 1 ELSE 0 END as has_review
        FROM rentals r
        JOIN cars c ON r.car_id = c.id
        JOIN users u ON r.shop_id = u.id
+       LEFT JOIN reviews rv ON r.id = rv.rental_id
        WHERE r.customer_id = ?
        ORDER BY r.created_at DESC`,
       [customerId]

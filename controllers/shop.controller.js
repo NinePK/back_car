@@ -147,9 +147,105 @@ const uploadProfileImage = async (req, res) => {
   }
 };
 
+// ดึงข้อมูลโปรไฟล์ร้านค้า
+const getProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const [user] = await db.executeQuery(
+      'SELECT id, username, email, shop_name, phone, address, promptpay_id, profile_image, role, created_at FROM users WHERE id = ?',
+      [userId]
+    );
+    
+    if (!user) {
+      return res.status(404).json({ message: 'ไม่พบข้อมูลผู้ใช้' });
+    }
+    
+    res.status(200).json({
+      message: 'ดึงข้อมูลโปรไฟล์สำเร็จ',
+      user
+    });
+    
+  } catch (err) {
+    console.error('Get profile error:', err);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์' });
+  }
+};
+
+// อัพเดทข้อมูลโปรไฟล์ร้านค้า
+const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { username, email, shop_name, phone, address, promptpay_id } = req.body;
+    
+    // ตรวจสอบข้อมูลที่จำเป็น
+    if (!username || !email || !shop_name) {
+      return res.status(400).json({ 
+        message: 'กรุณากรอกข้อมูลให้ครบถ้วน (ชื่อผู้ใช้, อีเมล, ชื่อร้านค้า)' 
+      });
+    }
+
+    // ตรวจสอบว่าชื่อผู้ใช้หรืออีเมลซ้ำกับผู้ใช้อื่นหรือไม่
+    const [existingUser] = await db.executeQuery(
+      'SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ?',
+      [username, email, userId]
+    );
+    
+    if (existingUser) {
+      return res.status(400).json({ 
+        message: 'ชื่อผู้ใช้หรืออีเมลนี้ถูกใช้งานแล้ว' 
+      });
+    }
+
+    // ตรวจสอบรูปแบบอีเมล
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        message: 'รูปแบบอีเมลไม่ถูกต้อง' 
+      });
+    }
+
+    // ตรวจสอบรูปแบบ PromptPay (ถ้ามี)
+    if (promptpay_id && promptpay_id.trim()) {
+      const promptpayRegex = /^[0-9]{10,13}$/;
+      if (!promptpayRegex.test(promptpay_id.replace(/[^0-9]/g, ''))) {
+        return res.status(400).json({ 
+          message: 'หมายเลข PromptPay ต้องเป็นตัวเลข 10-13 หลัก' 
+        });
+      }
+    }
+
+    const updateData = {
+      username: username.trim(),
+      email: email.trim(),
+      shop_name: shop_name.trim(),
+      phone: phone ? phone.trim() : null,
+      address: address ? address.trim() : null,
+      promptpay_id: promptpay_id ? promptpay_id.replace(/[^0-9]/g, '') : null,
+      updated_at: new Date()
+    };
+
+    const result = await db.update('users', userId, updateData);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'ไม่พบข้อมูลผู้ใช้' });
+    }
+    
+    res.status(200).json({
+      message: 'อัพเดทข้อมูลโปรไฟล์สำเร็จ'
+    });
+    
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์' });
+  }
+};
+
 module.exports = {
   getShops,
   searchShops,
   getShopById,
-  uploadProfileImage
+  uploadProfileImage,
+  getProfile,
+  updateProfile
 };
